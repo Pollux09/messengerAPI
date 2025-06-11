@@ -1,0 +1,56 @@
+version: '3.9'
+
+services:
+  api:
+    build:
+      context: .
+    container_name: fastapi
+    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    volumes:
+      - .:/app
+    ports:
+      - "8000:8000"
+    environment:
+      POSTGRES_URL: postgres://pollux:pollux@db:5432/messenger
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      - db
+      - redis
+    networks:
+      - messenger-network
+  db:
+    image: postgres
+    container_name: db
+    ports:
+      - "5442:5432"
+    restart: always
+    shm_size: 128mb
+    environment:
+      POSTGRES_PASSWORD: pollux
+      POSTGRES_USER: pollux
+      POSTGRES_DB: messenger
+      TZ: Europe/Samara
+      PGTZ: Europe/Samara
+    networks:
+      - messenger-network
+
+  adminer:
+    image: adminer
+    restart: always
+    ports:
+      - 8080:8080
+    networks:
+      - messenger-network
+
+  redis:
+    image: redis
+    container_name: redis
+    restart: always
+    ports:
+      - "6379:6379"
+    networks:
+      - messenger-network
+
+networks:
+  messenger-network:
+    driver: bridge
