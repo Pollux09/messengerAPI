@@ -1,20 +1,23 @@
+import json
+from typing import List
 import uuid
 from fastapi import HTTPException
 from psycopg2 import DatabaseError
-from sqlalchemy import select, delete, desc, func
+from sqlalchemy import asc, select, delete, desc, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
+from sqlalchemy.exc import SQLAlchemyError
 from passlib.context import CryptContext
 from models.Chat import Chat
+from models.Crypto_keys import CryptoKeys
 from models.Message import Message
 from models.User import User
-from schemas import ChatId, ChatScheme, DeleteChat, LoginData, SendMessage, UpdateUserAvatar, UserCreate, UserResponse, UsersIds
+from schemas import ChatId, ChatScheme, DeleteChat, LoginData, NewMessage, SendMessage, UpdateUserAvatar, UserCreate, UserResponse, UsersIds, UploadCryptKeys
 
 # Password hashing context
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 async def get_user(db: AsyncSession, user_id: str | uuid.UUID):
-    # Convert to UUID only if input is a string
     if isinstance(user_id, str):
         try:
             user_id = uuid.UUID(user_id)
@@ -26,7 +29,15 @@ async def get_user(db: AsyncSession, user_id: str | uuid.UUID):
     user = result.scalars().first()
     if not user:
         raise HTTPException(status_code=404, detail="User with this ID not found")
-    return user
+    keys = await get_user_crypto_keys(db=db, user_id=user.id);
+    
+    return UserResponse(
+        id=user.id,
+        username=user.username,
+        email=user.email,
+        avatar_photo=user.avatar_photo,
+        user_public_key=keys.public_key,
+    )
 
 async def create_user(db: AsyncSession, user: UserCreate) -> User:
     hashed_password = pwd_context.hash(user.password)
@@ -66,49 +77,79 @@ async def checkUserExists(db: AsyncSession, user_id: str | uuid.UUID):
     return True
 
 async def getChatsList(db: AsyncSession, user_id: str | uuid.UUID):
-    if isinstance(user_id, str):
-        try:
-            user_id = uuid.UUID(user_id)
-        except ValueError:
-            raise HTTPException(status_code=400, detail="Invalid user ID format")
+    try:
+        if isinstance(user_id, str):
+            try:
+                user_id = uuid.UUID(user_id)
+            except ValueError:
+                raise HTTPException(status_code=400, detail="Invalid user ID format")
 
-    stmt = select(Chat).where(Chat.users_ids.any(user_id))
-    result = await db.execute(stmt)
-    chats = result.scalars().all()
-    
-    chats_list = []
-    for chat in chats:
-        if user_id not in chat.users_ids:
-            continue
-        another_user_id = next((x for x in chat.users_ids if x != user_id), None)
-        if not another_user_id:
-            continue
-        user = await getUserById(db=db, user_id=another_user_id)
-        last_message = await get_last_chat_message(db=db, chat_id=chat.id)
-        last_message_text = ""
+        stmt = select(Chat).where(Chat.users_ids.any(user_id))
+        result = await db.execute(stmt)
+        chats = result.scalars().all()
         
-        if last_message != None:
-            if last_message.message_type == "image":
-               last_message_text = "Изображение"
+        chats_list = []
+        for chat in chats:
+            if user_id not in chat.users_ids:
+                continue
+            
+            another_user_id = next((x for x in chat.users_ids if x != user_id), None)
+            if not another_user_id:
+                continue
+
+            user = await getUserById(db=db, user_id=another_user_id)
+            if not user:
+                print(f"[WARN] User with ID {another_user_id} not found.")
+                continue
+
+            last_message_raw = await get_last_chat_message(db=db, chat_id=chat.id)
+            if not last_message_raw:
+                print(f"[INFO] No last message found for chat {chat.id}")
+                continue
             else:
-                last_message_text = last_message.text
-        if user:
+                try:
+                    last_message = NewMessage(
+                        id=last_message_raw.id,
+                        chat_id=last_message_raw.chat_id,
+                        user_id=last_message_raw.user_id,
+                        text=last_message_raw.text,
+                        created_at=last_message_raw.created_at,
+                        message_type=last_message_raw.message_type,
+                        encrypted_aes_key_sender=last_message_raw.encrypted_aes_key_sender,
+                        encrypted_aes_key_receiver=last_message_raw.encrypted_aes_key_receiver,
+                        iv=last_message_raw.iv,
+                    )
+                except AttributeError as e:
+                    print(f"[ERROR] Failed to construct NewMessage for chat {chat.id}: {e}")
+                    continue
+
+            keys = await get_user_crypto_keys(db=db, user_id=user.id)
+            if not keys:
+                print(f"[WARN] No crypto keys for user {user.id}")
+                continue
+
             chat_scheme = ChatScheme(
                 id=chat.id,
                 users_count=chat.users_count,
                 type=chat.type,
                 users_ids=chat.users_ids,
                 another_user=UserResponse(
-                    id=str(user.id),
+                    id=user.id,
                     email=user.email,
                     username=user.username,
-                    avatar_photo=user.avatar_photo
+                    avatar_photo=user.avatar_photo,
+                    user_public_key=keys.public_key,
                 ),
-                last_chat_message=last_message_text
+                last_chat_message=last_message
             )
             chats_list.append(chat_scheme)
-            
-    return chats_list
+
+        return chats_list
+
+    except Exception as e:
+        print(f"[FATAL] Unexpected error in getChatsList: {e}")
+        raise
+
 
 async def get_last_chat_message(db: AsyncSession, chat_id: str | uuid.UUID):
     if isinstance(chat_id, str):
@@ -140,10 +181,26 @@ async def getUserById(db: AsyncSession, user_id: str | uuid.UUID):
     return user
 
 async def search_users_by_username(db: AsyncSession, username: str):
-    stmt = select(User).where(func.lower(User.username).ilike(f"%{username.lower()}%"))
-    result = await db.execute(stmt)
-    users = result.scalars().all()
-    return users
+    try:
+        stmt = select(User).where(func.lower(User.username).ilike(f"%{username.lower()}%"))
+        result = await db.execute(stmt)
+        users = result.scalars().all()
+        final_result_list = []
+        
+        for user in users:
+            keys: CryptoKeys = await get_user_crypto_keys(db=db, user_id=user.id)
+            final_result_list.append(
+                UserResponse(
+                    id=user.id,
+                    email=user.email,
+                    username=user.username,
+                    avatar_photo=user.avatar_photo,
+                    user_public_key=keys.public_key
+                )
+            )
+        return final_result_list
+    except Exception as e:
+        return e
 
 async def find_chat_by_exact_users(db: AsyncSession, user_ids: UsersIds):
     try:
@@ -215,12 +272,12 @@ async def create_chat_by_initial_message(db: AsyncSession, message: SendMessage)
             else uuid.UUID(message.recipient_user_id)
         )
     except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid user ID format")
+        raise HTTPException(status_code=402, detail="Invalid user ID format")
 
     user_ids = UsersIds(users_ids=[str(sender_id), str(recipient_id)])
     existing_chat = await find_chat_by_exact_users(db, user_ids)
     if existing_chat:
-        raise HTTPException(status_code=400, detail="Chat with these users already exists")
+        raise HTTPException(status_code=404, detail="Chat with these users already exists")
 
     if not db.in_transaction():
         async with db.begin():
@@ -235,7 +292,10 @@ async def create_chat_by_initial_message(db: AsyncSession, message: SendMessage)
                 chat_id=chat.id,
                 user_id=sender_id,
                 text=message.text,
-                message_type=message.message_type
+                message_type=message.message_type,
+                encrypted_aes_key_receiver=message.encrypted_aes_key_receiver,
+                encrypted_aes_key_sender=message.encrypted_aes_key_sender,
+                iv=message.iv,
             )
             db.add(created_message)
             await db.refresh(chat)
@@ -252,7 +312,10 @@ async def create_chat_by_initial_message(db: AsyncSession, message: SendMessage)
             chat_id=chat.id,
             user_id=sender_id,
             text=message.text,
-            message_type=message.message_type
+            message_type=message.message_type,
+            encrypted_aes_key_receiver=message.encrypted_aes_key_receiver,
+            encrypted_aes_key_sender=message.encrypted_aes_key_sender,
+            iv=message.iv,
         )
         db.add(created_message)
         await db.commit()
@@ -270,13 +333,9 @@ async def create_chat_by_initial_message(db: AsyncSession, message: SendMessage)
     current_user_data = await getUserById(db=db, user_id=current_user_id)
     
     last_message = await get_last_chat_message(db=db, chat_id=chat.id)
-    last_message_text = ""
-    if last_message.message_type == "image":
-        last_message_text = "Изображение"
-    else:
-        last_message_text = last_message.text
     
     if another_user_data:
+        keys = await get_user_crypto_keys(db=db, user_id=another_user_data.id);
         chat_scheme = ChatScheme(
             id=chat.id,
             users_count=chat.users_count,
@@ -286,10 +345,23 @@ async def create_chat_by_initial_message(db: AsyncSession, message: SendMessage)
                 id=str(another_user_data.id),
                 email=another_user_data.email,
                 username=another_user_data.username,
-                avatar_photo=another_user_data.avatar_photo
+                avatar_photo=another_user_data.avatar_photo,
+                user_public_key=keys.public_key,
             ),
-            last_chat_message=last_message_text
+            last_chat_message=NewMessage(
+                id=last_message.id,
+                chat_id=last_message.chat_id,
+                user_id=last_message.user_id,
+                text=last_message.text,
+                created_at=last_message.created_at,
+                message_type=last_message.message_type,
+                encrypted_aes_key_sender=last_message.encrypted_aes_key_sender,
+                encrypted_aes_key_receiver=last_message.encrypted_aes_key_receiver,
+                iv=last_message.iv,
+            )
         )
+        keys = await get_user_crypto_keys(db=db, user_id=current_user_data.id);
+        
         return {
             "messages": messages,
             "chat": chat_scheme,
@@ -297,10 +369,11 @@ async def create_chat_by_initial_message(db: AsyncSession, message: SendMessage)
                 id=str(current_user_data.id),
                 email=current_user_data.email,
                 username=current_user_data.username,
-                avatar_photo=current_user_data.avatar_photo
+                avatar_photo=current_user_data.avatar_photo,
+                user_public_key=keys.public_key,
             ),
         }
-    raise HTTPException(status_code=400, detail="Failed to create chat")
+    raise HTTPException(status_code=408, detail="Failed to create chat")
 
 async def add_chat_message(db: AsyncSession, message: SendMessage):
     try:
@@ -322,6 +395,9 @@ async def add_chat_message(db: AsyncSession, message: SendMessage):
         user_id=sender_id,
         text=message.text,
         message_type=message.message_type,
+        encrypted_aes_key_receiver=message.encrypted_aes_key_receiver,
+        encrypted_aes_key_sender=message.encrypted_aes_key_sender,
+        iv=message.iv,
     )
     if not db.in_transaction():
         async with db.begin():
@@ -345,7 +421,7 @@ async def get_chat_messages(db: AsyncSession, chat_id: ChatId):
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid chat ID format")
     
-    stmt = select(Message).where(Message.chat_id == chat_id_uuid)
+    stmt = select(Message).where(Message.chat_id == chat_id_uuid).order_by(asc(Message.created_at))
     result = await db.execute(stmt)
     messages = result.scalars().all()
     return messages
@@ -409,3 +485,69 @@ async def delete_chat_by_id(db: AsyncSession, chat_id: DeleteChat):
         await db.delete(chat)
         await db.commit()
     return {"detail": "Chat deleted successfully"}
+
+async def add_crypto_keys(db: AsyncSession, keys: UploadCryptKeys, user_id: str):
+    try:
+        # Валидация UUID
+        user_id = uuid.UUID(user_id)
+        
+        # Валидация ключей
+        if not keys.public_key or not keys.private_key:
+            raise HTTPException(status_code=400, detail="Public or private key cannot be empty")
+
+        # Проверка существования ключей для пользователя
+        existing_keys = (await db.execute(select(CryptoKeys).where(CryptoKeys.user_id == user_id))).scalars().first()
+        if existing_keys:
+            raise HTTPException(status_code=400, detail="Keys for this user already exist")
+
+        # Создание новой записи
+        key_pair = CryptoKeys(
+            user_id=user_id,
+            public_key=keys.public_key,
+            private_key=keys.private_key,
+        )
+        
+        db.add(key_pair)
+        await db.commit()
+        await db.refresh(key_pair)
+        return key_pair
+
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid UUID format")
+    except SQLAlchemyError as e:
+        await db.rollback()
+        raise HTTPException(status_code=500, detail="Database error occurred")
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
+        
+async def get_user_crypto_keys(db: AsyncSession, user_id: uuid.UUID) -> CryptoKeys:
+    try:        
+        user_keys = await db.execute(select(CryptoKeys).where(CryptoKeys.user_id == user_id))
+        result = user_keys.scalars().first()
+        
+        if result is None:
+            raise HTTPException(status_code=404, detail="Crypto keys not found for this user")
+        
+        return result
+    
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid UUID format")
+    except SQLAlchemyError as e:
+        return e
+        raise HTTPException(status_code=502, detail=f"Database error: {str(e)}")
+    except Exception as e:
+        return e
+        return HTTPException(status_code=504, detail=f"Unexpected error: {str(e)}")
+    
+async def check_user_exists(db: AsyncSession, email: str):
+    try:
+        user = await db.execute(select(User).where(User.email == email))
+        result = user.scalars().first()
+        
+        if not result:
+            return False
+        return True
+    except Exception as e:
+        print(e)
+        raise HTTPException(status_code=502, detail="Что-то пошло не так")
