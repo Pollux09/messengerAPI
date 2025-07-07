@@ -11,7 +11,7 @@ from models.Basic import Base
 config = context.config
 fileConfig(config.config_file_name)
 
-DB_URL = "postgresql+asyncpg://pollux:pollux@localhost:5442/messenger"
+DB_URL = "postgresql+asyncpg://pollux:pollux@db:5432/messenger"
 config.set_main_option("sqlalchemy.url", DB_URL)
 
 target_metadata = Base.metadata
