@@ -1,12 +1,12 @@
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
-import os
 
-DATABASE_URL = "postgresql+asyncpg://pollux:pollux@localhost:5442/messenger"
+DATABASE_URL = "postgresql+asyncpg://pollux:pollux@db:5432/messenger"
 
 # Создаём асинхронный движок SQLAlchemy
 engine = create_async_engine(
     DATABASE_URL,
+    echo=True
 )
 
 # Создаём фабрику асинхронных сессий
