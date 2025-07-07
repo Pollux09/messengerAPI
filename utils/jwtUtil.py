@@ -1,6 +1,7 @@
 import datetime
 import os
-from fastapi import HTTPException
+from fastapi import Depends, HTTPException
+from fastapi.security import OAuth2PasswordBearer
 import jwt
 from dotenv import load_dotenv
 
@@ -42,5 +43,13 @@ class JwtUtil:
             print("error is: ")
             print(e)
             return False
+    
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+        
+async def verify_user_middleware(token: str = Depends(oauth2_scheme)):
+    decoded_token = await jwtUtil.decodeJwtToken(token=token)
+    if decoded_token != False:
+        return decoded_token
+    raise HTTPException(status_code=401)
     
 jwtUtil = JwtUtil()
