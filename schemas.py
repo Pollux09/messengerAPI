@@ -15,6 +15,7 @@ class UserResponse(BaseModel):
     email: str
     username: str
     avatar_photo: Optional[str] = None
+    user_public_key: str
     
 class AccessToken(BaseModel):
     access_token: str
@@ -28,14 +29,6 @@ class LoginData(BaseModel):
     
 class UserId(BaseModel):
     user_id: str
-    
-class ChatScheme(BaseModel):
-    id: UUID
-    users_count: int
-    type: str
-    users_ids: List[UUID]
-    another_user: UserResponse
-    last_chat_message: str
     
 class FindUsersByUsername(BaseModel):
     username: str
@@ -56,6 +49,9 @@ class SendMessage(BaseModel):
     chat_id: Optional[str] = None
     text: str
     message_type: str
+    encrypted_aes_key_sender: str
+    encrypted_aes_key_receiver: str
+    iv: str
     
 class NewMessage(BaseModel):
     id: UUID
@@ -64,6 +60,17 @@ class NewMessage(BaseModel):
     text: str
     created_at: datetime
     message_type: str
+    encrypted_aes_key_sender: str
+    encrypted_aes_key_receiver: str
+    iv: str
+    
+class ChatScheme(BaseModel):
+    id: UUID
+    users_count: int
+    type: str
+    users_ids: List[UUID]
+    another_user: UserResponse
+    last_chat_message: NewMessage
     
 class UsersIds(BaseModel):
     users_ids: List
@@ -75,7 +82,22 @@ class UpdateUserAvatar(BaseModel):
     user_id: UUID
     photo_data: str
 
-
 class DeleteChat(BaseModel):
     chat_id: UUID
     another_user_id: UUID
+    
+class UploadCryptKeys(BaseModel):
+    public_key: str
+    private_key: str
+    
+class LoginSuccessResponse(BaseModel):
+    access_token: str
+    refresh_token: str
+    crypt_keys: UploadCryptKeys
+    
+class EmailScheme(BaseModel):
+    email: str
+    
+class VerifyEmailScheme(BaseModel):
+    email: str
+    code: str
