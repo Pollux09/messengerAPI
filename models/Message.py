@@ -14,5 +14,9 @@ class Message(Base):
     user = relationship("User", back_populates="messages")
 
     text = Column(Text, nullable=False)
+    encrypted_aes_key_sender = Column(Text, nullable=False)
+    encrypted_aes_key_receiver = Column(Text, nullable=False)
+    iv = Column(Text, nullable=False)
+    
     message_type = Column(Text, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
