@@ -1,9 +1,10 @@
 import json
 from fastapi import APIRouter, Depends, Query, WebSocket, WebSocketDisconnect
-from crud import add_chat_message, create_chat_by_initial_message, delete_chat_by_id, find_chat_by_exact_users, get_chat_messages, getChatsList
+from crud.chats import getChatsList, find_chat_by_exact_users, delete_chat_by_id, create_chat_by_initial_message
+from crud.messages import get_chat_messages, add_chat_message
 from database import get_db
-from schemas import AccessToken, ChatId, DeleteChat, NewMessage, SendMessage, UsersIds
-from utils.jwtUtil import jwtUtil, verify_user_middleware
+from schemas import ChatId, DeleteChat, NewMessage, SendMessage, UsersIds
+from utils.jwtUtil import verify_user_middleware
 from sqlalchemy.orm import Session
 from websocketManagers.ChatsManager import chats_manager
 from websocketManagers.ChatManager import chat_manager
@@ -89,7 +90,7 @@ async def send_message(message: SendMessage, db: Session = Depends(get_db)):
                 iv=new_message.iv,
             )
             print('новое сообщение в чате')
-            await chat_manager.send(chat_id=new_message.chat_id, action_type="new_message", message=json.dumps(message_model.json()));
+            await chat_manager.send(chat_id=new_message.chat_id, action_type="new_message", message=json.dumps(message_model.json()))
             if new_message.message_type == 'image':
                     new_message.text = "Изображение"
                     

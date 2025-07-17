@@ -1,11 +1,10 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from crud import add_user_avatar, checkUserExists, get_user, search_users_by_username
-from schemas import AccessToken, FindUsersByUsername, UpdateUserAvatar
+from crud.users import search_users_by_username, checkUserExists, get_user, add_user_avatar
+from schemas import FindUsersByUsername, UpdateUserAvatar
 from database import get_db
 import logging
-
-from utils.jwtUtil import jwtUtil, verify_user_middleware
+from utils.jwtUtil import verify_user_middleware
 
 logger = logging.getLogger(__name__)
 
