@@ -1,20 +1,15 @@
-from fastapi import APIRouter, Depends, HTTPException
-
+from fastapi import APIRouter, HTTPException
 from crud.crypto_keys import add_crypto_keys
-from database import get_db
-from schemas import UploadCryptKeys
-import logging
-from utils.jwtUtil import verify_user_middleware
-from sqlalchemy.orm import Session
+from dependencies.deps import SessionDep, UserTokenDep
+from schemas.auth import UploadCryptKeys
 
-logger = logging.getLogger(__name__)
+router = APIRouter(prefix="/secure", tags=["secure"])
 
-secureRouter = APIRouter()
-
-@secureRouter.post("/upload-key")
-async def upload_key(keys: UploadCryptKeys, decoded_access_token = Depends(verify_user_middleware), db: Session = Depends(get_db)):
+@router.post("/upload-keys")
+async def upload_keys(session: SessionDep, keys: UploadCryptKeys, decoded_access_token: UserTokenDep):
     try:
-        await add_crypto_keys(db=db, keys=keys, user_id=decoded_access_token["user_id"])
+        await add_crypto_keys(session=session, keys=keys, user_id=decoded_access_token["user_id"])
+        return {'status': True, 'action': 'upload keys'}
     except Exception as e:
         raise HTTPException(status_code=408, detail=str(e))
     

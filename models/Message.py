@@ -1,7 +1,8 @@
 from sqlalchemy import UUID, Column, ForeignKey, DateTime, Text, func
-from models.Basic import Base
 import uuid
 from sqlalchemy.orm import relationship
+from config.db import Base
+
 
 class Message(Base):
     __tablename__ = "messages"

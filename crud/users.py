@@ -4,16 +4,18 @@ from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from psycopg2 import DatabaseError
 from crud.crypto_keys import get_user_crypto_keys
-from models.Crypto_keys import CryptoKeys
+from models.CryptoKey import CryptoKeys
 from models.User import User
-from schemas import LoginData, UserCreate, UserResponse, UpdateUserAvatar
 from passlib.context import CryptContext
+from schemas.auth import LoginData
+from schemas.chat import UpdateUserAvatar
+from schemas.user import UserResponse, UserCreate
 
 # Password hashing context
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
-async def get_user(db: AsyncSession, user_id: str | uuid.UUID):
+async def get_user(session: AsyncSession, user_id: str | uuid.UUID):
     if isinstance(user_id, str):
         try:
             user_id = uuid.UUID(user_id)
@@ -21,11 +23,11 @@ async def get_user(db: AsyncSession, user_id: str | uuid.UUID):
             raise HTTPException(status_code=400, detail="Invalid user ID format")
 
     stmt = select(User).where(User.id == user_id)
-    result = await db.execute(stmt)
+    result = await session.execute(stmt)
     user = result.scalars().first()
     if not user:
         raise HTTPException(status_code=404, detail="User with this ID not found")
-    keys = await get_user_crypto_keys(db=db, user_id=user.id)
+    keys = await get_user_crypto_keys(session=session, user_id=user.id)
 
     return UserResponse(
         id=user.id,
@@ -36,23 +38,23 @@ async def get_user(db: AsyncSession, user_id: str | uuid.UUID):
     )
 
 
-async def create_user(db: AsyncSession, user: UserCreate) -> User:
+async def create_user(session: AsyncSession, user: UserCreate) -> User:
     hashed_password = pwd_context.hash(user.password)
-    db_user = User(
+    session_user = User(
         email=user.email,
         username=user.username,
         hashed_password=hashed_password,
     )
-    db.add(db_user)
-    await db.flush()
-    await db.commit()
-    await db.refresh(db_user)
-    return db_user
+    session.add(session_user)
+    await session.flush()
+    await session.commit()
+    await session.refresh(session_user)
+    return session_user
 
 
-async def login_user(db: AsyncSession, login_data: LoginData):
+async def login_user(session: AsyncSession, login_data: LoginData):
     stmt = select(User).where(User.email == login_data.email)
-    result = await db.execute(stmt)
+    result = await session.execute(stmt)
     user = result.scalars().first()
     if not user:
         raise HTTPException(status_code=404, detail="User with this email not found")
@@ -62,9 +64,9 @@ async def login_user(db: AsyncSession, login_data: LoginData):
     return user
 
 
-async def check_user_exists(db: AsyncSession, email: str):
+async def check_user_exists(session: AsyncSession, email: str):
     try:
-        user = await db.execute(select(User).where(User.email == email))
+        user = await session.execute(select(User).where(User.email == email))
         result = user.scalars().first()
 
         if not result:
@@ -75,7 +77,7 @@ async def check_user_exists(db: AsyncSession, email: str):
         raise HTTPException(status_code=502, detail="Что-то пошло не так")
 
 
-async def getUserById(db: AsyncSession, user_id: str | uuid.UUID):
+async def getUserById(session: AsyncSession, user_id: str | uuid.UUID):
     if isinstance(user_id, str):
         try:
             user_id = uuid.UUID(user_id)
@@ -83,20 +85,20 @@ async def getUserById(db: AsyncSession, user_id: str | uuid.UUID):
             raise HTTPException(status_code=400, detail="Invalid user ID format")
 
     stmt = select(User).where(User.id == user_id)
-    result = await db.execute(stmt)
+    result = await session.execute(stmt)
     user = result.scalars().first()
     return user
 
 
-async def search_users_by_username(db: AsyncSession, username: str):
+async def search_users_by_username(session: AsyncSession, username: str) -> list[UserResponse]:
     try:
         stmt = select(User).where(func.lower(User.username).ilike(f"%{username.lower()}%"))
-        result = await db.execute(stmt)
+        result = await session.execute(stmt)
         users = result.scalars().all()
         final_result_list = []
 
         for user in users:
-            keys: CryptoKeys = await get_user_crypto_keys(db=db, user_id=user.id)
+            keys: CryptoKeys = await get_user_crypto_keys(session=session, user_id=user.id)
             final_result_list.append(
                 UserResponse(
                     id=user.id,
@@ -111,7 +113,7 @@ async def search_users_by_username(db: AsyncSession, username: str):
         return e
 
 
-async def add_user_avatar(db: AsyncSession, update_avatar: UpdateUserAvatar):
+async def add_user_avatar(session: AsyncSession, update_avatar: UpdateUserAvatar):
     # Проверка user_id
     if not isinstance(update_avatar.user_id, (uuid.UUID, str)):
         raise HTTPException(status_code=400, detail="User ID must be a UUID or a string")
@@ -130,8 +132,8 @@ async def add_user_avatar(db: AsyncSession, update_avatar: UpdateUserAvatar):
         raise HTTPException(status_code=400, detail="Photo data cannot be empty")
 
     try:
-        async with db.begin():
-            result = await db.execute(select(User).where(User.id == user_id))
+        async with session.begin():
+            result = await session.execute(select(User).where(User.id == user_id))
             user = result.scalar_one_or_none()
 
             if not user:
@@ -143,14 +145,14 @@ async def add_user_avatar(db: AsyncSession, update_avatar: UpdateUserAvatar):
         raise HTTPException(status_code=500, detail="Database error occurred")
 
 
-async def checkUserExists(db: AsyncSession, user_id: str | uuid.UUID):
+async def checkUserExists(session: AsyncSession, user_id: str | uuid.UUID):
     if isinstance(user_id, str):
         try:
             user_id = uuid.UUID(user_id)
         except ValueError:
             raise HTTPException(status_code=400, detail="Invalid user ID format")
 
-    result = await db.execute(select(User).filter(User.id == user_id))
+    result = await session.execute(select(User).filter(User.id == user_id))
     user = result.scalars().first()
     if not user:
         raise HTTPException(status_code=404, detail="User with this ID not found")
