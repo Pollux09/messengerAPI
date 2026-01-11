@@ -1,8 +1,8 @@
-/venv
+/.venv
 /routers/__pycache__/
 /utils/__pycache__/
 /models/__pycache__/
-/migrations/versions/__pycache__/
-/migrations/__pycache__/__pycache__/
-/websocketManagers/__pycache__/
+/alembic/migrations/versions/__pycache__/
+/alembic/migrations/__pycache__/__pycache__/
+/websocket_managers/__pycache__/
 /__pycache__/

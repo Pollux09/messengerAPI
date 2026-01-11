@@ -3,9 +3,10 @@ from fastapi import HTTPException
 from sqlalchemy import asc, select, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 from models.Message import Message
-from schemas import ChatId, SendMessage
+from schemas.chat import SendMessage, ChatId
 
-async def get_last_chat_message(db: AsyncSession, chat_id: str | uuid.UUID):
+
+async def get_last_chat_message(session: AsyncSession, chat_id: str | uuid.UUID):
     if isinstance(chat_id, str):
         try:
             chat_id = uuid.UUID(chat_id)
@@ -18,12 +19,12 @@ async def get_last_chat_message(db: AsyncSession, chat_id: str | uuid.UUID):
         .order_by(desc(Message.created_at))
         .limit(1)
     )
-    result = await db.execute(stmt)
+    result = await session.execute(stmt)
     message = result.scalars().first()
     return message
 
 
-async def add_chat_message(db: AsyncSession, message: SendMessage):
+async def add_chat_message(session: AsyncSession, message: SendMessage):
     try:
         chat_id = (
             message.chat_id
@@ -47,20 +48,20 @@ async def add_chat_message(db: AsyncSession, message: SendMessage):
         encrypted_aes_key_sender=message.encrypted_aes_key_sender,
         iv=message.iv,
     )
-    if not db.in_transaction():
-        async with db.begin():
-            db.add(created_message)
-            await db.flush()
-            await db.refresh(created_message)
+    if not session.in_transaction():
+        async with session.begin():
+            session.add(created_message)
+            await session.flush()
+            await session.refresh(created_message)
     else:
-        db.add(created_message)
-        await db.flush()
-        await db.refresh(created_message)
+        session.add(created_message)
+        await session.flush()
+        await session.refresh(created_message)
 
     return created_message
 
 
-async def get_chat_messages(db: AsyncSession, chat_id: ChatId):
+async def get_chat_messages(session: AsyncSession, chat_id: ChatId):
     try:
         chat_id_uuid = (
             chat_id.chat_id
@@ -71,6 +72,6 @@ async def get_chat_messages(db: AsyncSession, chat_id: ChatId):
         raise HTTPException(status_code=400, detail="Invalid chat ID format")
 
     stmt = select(Message).where(Message.chat_id == chat_id_uuid).order_by(asc(Message.created_at))
-    result = await db.execute(stmt)
+    result = await session.execute(stmt)
     messages = result.scalars().all()
     return messages

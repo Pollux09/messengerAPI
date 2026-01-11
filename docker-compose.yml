@@ -1,19 +1,12 @@
-version: '3.9'
-
 services:
   api:
     build:
       context: .
-    container_name: fastapi
-    command: python -u -m uvicorn main:app --host 0.0.0.0 --port 8000 --log-level debug --reload-dir /app
+    container_name: marketAPI
     volumes:
       - .:/app
     ports:
-      - "8000:8000"
-    environment:
-      POSTGRES_URL: postgres://pollux:pollux@db:5432/messenger
-      DATABASE_URL: postgres://pollux:pollux@db:5432/messenger
-      REDIS_URL: redis://redis:6379
+      - "8001:8000"
     depends_on:
       - db
       - redis
@@ -22,16 +15,30 @@ services:
   db:
     image: postgres
     container_name: db
-    ports:
-      - "5442:5432"
-    restart: always
-    shm_size: 128mb
     environment:
       POSTGRES_PASSWORD: pollux
       POSTGRES_USER: pollux
       POSTGRES_DB: messenger
       TZ: Europe/Samara
       PGTZ: Europe/Samara
+    ports:
+      - "5442:5432"
+    restart: always
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    shm_size: 128mb
+    networks:
+      - messenger-network
+
+  redis:
+    image: redis
+    container_name: cache
+    restart: always
+    ports:
+      - "6379:6379"
     networks:
       - messenger-network
 
@@ -40,15 +47,6 @@ services:
     restart: always
     ports:
       - 8080:8080
-    networks:
-      - messenger-network
-
-  redis:
-    image: redis
-    container_name: redis
-    restart: always
-    ports:
-      - "6379:6379"
     networks:
       - messenger-network
 
