@@ -6,3 +6,4 @@
 /alembic/migrations/__pycache__/__pycache__/
 /websocket_managers/__pycache__/
 /__pycache__/
+/.env
