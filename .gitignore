@@ -1,9 +1,5 @@
 /.venv
-/routers/__pycache__/
-/utils/__pycache__/
-/models/__pycache__/
-/alembic/migrations/versions/__pycache__/
-/alembic/migrations/__pycache__/__pycache__/
-/websocket_managers/__pycache__/
-/__pycache__/
 /.env
+.DS_Store
+__pycache__/
+*.py[cod]
