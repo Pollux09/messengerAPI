@@ -1,6 +1,7 @@
 from collections import defaultdict
 import json
 from fastapi import WebSocket
+from config.logger import logger
 
 
 class ChatManager:
@@ -24,30 +25,39 @@ class ChatManager:
 
     async def send(self, chat_id: str, action_type: str, message = None):
         try:
+            chat_id = str(chat_id)
             match action_type:
                 case "new_message":
-                    if message != None:
+                    if message is not None:
                         data = {
                             "action": action_type,
                             "message": message,
                         }
-                        chat_id = str(chat_id)
                         if chat_id in self.active_connections:
-                            for connection in self.active_connections[chat_id]:
-                                await connection.send_text(json.dumps(data))
+                            stale_connections = []
+                            for connection in list(self.active_connections[chat_id]):
+                                try:
+                                    await connection.send_text(json.dumps(data))
+                                except Exception:
+                                    stale_connections.append(connection)
+                            for connection in stale_connections:
+                                self.disconnect(connection, chat_id)
                 case "delete_chat":
-                    print('WORKING CASE DELETE CHAT')
-                    chat_id = str(chat_id)
                     data = {
                         "action": action_type,
                         "chat_id": chat_id,
                     }
                     if chat_id in self.active_connections:
-                        for connection in self.active_connections[chat_id]:
-                            await connection.send_text(json.dumps(data))
+                        stale_connections = []
+                        for connection in list(self.active_connections[chat_id]):
+                            try:
+                                await connection.send_text(json.dumps(data))
+                            except Exception:
+                                stale_connections.append(connection)
+                        for connection in stale_connections:
+                            self.disconnect(connection, chat_id)
         except Exception as e:
-            print('ошибка при send в chat manager send')
-            print(e)
+            logger.error("Chat websocket send error: %s", str(e))
 
                         
 chat_manager = ChatManager()

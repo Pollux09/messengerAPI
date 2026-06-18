@@ -1,12 +1,12 @@
 from datetime import datetime
-from typing import Optional, Any
+from typing import Any, Optional
 from uuid import UUID
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from schemas.user import UserResponse
 
 
 class ChatId(BaseModel):
-    id: int
+    chat_id: UUID
 
 
 class UpdateUserAvatar(BaseModel):
@@ -14,9 +14,14 @@ class UpdateUserAvatar(BaseModel):
     photo_data: str
 
 
+class UpdateChatAvatar(BaseModel):
+    chat_id: UUID
+    photo_data: str
+
+
 class DeleteChat(BaseModel):
     chat_id: UUID
-    another_user_id: UUID
+    another_user_id: Optional[UUID] = None
 
 
 class NewMessage(BaseModel):
@@ -28,6 +33,7 @@ class NewMessage(BaseModel):
     message_type: str
     encrypted_aes_key_sender: str
     encrypted_aes_key_receiver: str
+    encrypted_keys: dict[str, str] = {}
     iv: str
 
 
@@ -36,8 +42,13 @@ class ChatScheme(BaseModel):
     users_count: int
     type: str
     users_ids: list[UUID]
-    another_user: UserResponse
-    last_chat_message: NewMessage
+    title: Optional[str] = None
+    avatar_photo: Optional[str] = None
+    created_by: Optional[UUID] = None
+    participants: list[UserResponse]
+    another_user: Optional[UserResponse] = None
+    last_chat_message: Optional[NewMessage] = None
+    can_manage: bool = False
 
 
 class Message(BaseModel):
@@ -49,10 +60,31 @@ class Message(BaseModel):
 
 class SendMessage(BaseModel):
     sender_user_id: UUID
-    recipient_user_id: UUID
+    recipient_user_id: Optional[UUID] = None
     chat_id: Optional[str] = None
     text: str
     message_type: str
-    encrypted_aes_key_sender: str
-    encrypted_aes_key_receiver: str
+    encrypted_aes_key_sender: str = ""
+    encrypted_aes_key_receiver: str = ""
+    encrypted_keys: dict[str, str] = {}
     iv: str
+
+
+class CreateGroupChat(BaseModel):
+    title: str = Field(min_length=1, max_length=128)
+    user_ids: list[UUID] = Field(default_factory=list)
+
+
+class UpdateGroupTitle(BaseModel):
+    chat_id: UUID
+    title: str = Field(min_length=1, max_length=128)
+
+
+class GroupMembersUpdate(BaseModel):
+    chat_id: UUID
+    user_ids: list[UUID] = Field(min_length=1)
+
+
+class GroupMemberRemove(BaseModel):
+    chat_id: UUID
+    user_id: UUID
