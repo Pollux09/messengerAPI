@@ -6,7 +6,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", case_sensitive=False)
 
     # App
-    APP_NAME: str = "Messenger"
+    APP_NAME: str = "Pinq"
     APP_HOST: str = "0.0.0.0"
     APP_PORT: int = 8000
     APP_RELOAD: bool = True
@@ -41,6 +41,19 @@ class Settings(BaseSettings):
     # SMTP
     SMTP_SERVER: str
     SMTP_PORT: int
+    SMTP_USERNAME: str
     SMTP_PASSWORD: str
+    SMTP_FROM: str = "no-reply@messenger.local"
+    SMTP_USE_TLS: bool = True
+
+    # Default admin bootstrap
+    ADMIN_EMAIL: str = "admin@messenger.local"
+    ADMIN_PASSWORD: str = "Admin12345!"
+    ADMIN_USERNAME: str = "@admin"
+
+    # Default test user bootstrap
+    TEST_USER_EMAIL: str = "test@messenger.local"
+    TEST_USER_PASSWORD: str = "Test12345!"
+    TEST_USER_USERNAME: str = "@testuser"
 
 settings = Settings() # type: ignore

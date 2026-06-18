@@ -1,14 +1,25 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
-class UploadCryptKeys(BaseModel):
-    public_key: str
-    private_key: str
+
+class StoredCryptKeys(BaseModel):
+    public_key: str = Field(default="")
+    encrypted_private_key: str = Field(default="")
+    kdf_salt: str = Field(default="")
+    encryption_nonce: str = Field(default="")
+
+
+class SignUpRequest(BaseModel):
+    email: str
+    password: str
+    username: str
+    nickname: str = Field(min_length=1, max_length=64)
+    crypt_keys: StoredCryptKeys
 
 
 class LoginSuccessResponse(BaseModel):
     access_token: str
     refresh_token: str
-    crypt_keys: UploadCryptKeys
+    crypt_keys: StoredCryptKeys
 
 
 class EmailScheme(BaseModel):
@@ -36,3 +47,7 @@ class RefreshToken(BaseModel):
 class AuthTokens(BaseModel):
     access_token: str
     refresh_token: str
+
+
+class RegistrationPendingResponse(BaseModel):
+    message: str

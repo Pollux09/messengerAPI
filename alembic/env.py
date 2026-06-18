@@ -21,11 +21,12 @@ import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # import all models
-from models.User import User
-from models.CryptoKey import CryptoKeys
-from models.Message import Message
-from models.Chat import Chat
-from models.ChatType import ChatType
+from models.user import User
+from models.crypto_key import CryptoKeys
+from models.message import Message
+from models.chat import Chat
+from models.chat_member import ChatMember
+from models.role import Role
 
 target_metadata = Base.metadata
 

@@ -25,16 +25,21 @@ class EmailVerificationRedisService:
                 "call_count": 0,
                 "code": code
             })
+            await self.redis.expire(email, self.expire_seconds)
             return code
         except Exception as e:
             logger.error('add verify code error: ' + str(e))
             raise HTTPException(detail='Internal Error', status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-    async def get_verify_code(self, email: str) -> dict[str, int]:
+    async def get_verify_code(self, email: str) -> dict[str, int] | None:
         try:
-            call_count = int(await self.redis.hget(email, "call_count") or 0)
-            code = int(await self.redis.hget(email, "code") or 0)
+            data = await self.redis.hgetall(email)
+            if not data:
+                return None
+
+            call_count = int(data.get("call_count", 0))
+            code = int(data.get("code", 0))
 
             return {
                 'call_count': call_count,
@@ -48,5 +53,6 @@ class EmailVerificationRedisService:
     async def update_call_count(self, email: str) -> None:
         try:
             await self.redis.hincrby(email, "call_count", 1)
+            await self.redis.expire(email, self.expire_seconds)
         except Exception as e:
             raise HTTPException(detail='Internal Error', status_code=status.HTTP_500_INTERNAL_SERVER_ERROR)

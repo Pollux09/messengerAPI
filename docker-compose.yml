@@ -37,8 +37,16 @@ services:
     image: redis
     container_name: cache
     restart: always
+    networks:
+      - messenger-network
+
+  mailpit:
+    image: axllent/mailpit
+    container_name: mailpit
+    restart: always
     ports:
-      - "6379:6379"
+      - "1025:1025"
+      - "8025:8025"
     networks:
       - messenger-network
 
@@ -46,7 +54,7 @@ services:
     image: adminer
     restart: always
     ports:
-      - 8080:8080
+      - 8081:8080
     networks:
       - messenger-network
 

@@ -1,45 +1,65 @@
-from logging.config import fileConfig
-from sqlalchemy.ext.asyncio import create_async_engine
-from alembic import context
-import sys
-from pathlib import Path
 import asyncio
+import sys
+from logging.config import fileConfig
+from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from models.Basic import Base
+from alembic import context
+from sqlalchemy import pool
+from sqlalchemy.engine import Connection
+from sqlalchemy.ext.asyncio import async_engine_from_config
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
+
+from config.db import Base
+from config.settings import settings
+from models.chat import Chat
+from models.chat_member import ChatMember
+from models.crypto_key import CryptoKeys
+from models.message import Message
+from models.role import Role
+from models.user import User
 
 config = context.config
-fileConfig(config.config_file_name)
+if config.config_file_name is not None:
+    fileConfig(config.config_file_name)
 
-session_URL = "postgresql+asyncpg://pollux:pollux@session:5432/messenger"
-config.set_main_option("sqlalchemy.url", session_URL)
+config.set_main_option("sqlalchemy.url", str(settings.DATABASE_URL))
 
 target_metadata = Base.metadata
 
-def run_migrations_offline():
+
+def run_migrations_offline() -> None:
+    url = config.get_main_option("sqlalchemy.url")
     context.configure(
-        url=session_URL,
+        url=url,
         target_metadata=target_metadata,
         literal_binds=True,
+        compare_server_default=True,
         dialect_opts={"paramstyle": "named"},
     )
+
     with context.begin_transaction():
         context.run_migrations()
 
-def do_run_migrations(connection):
-    context.configure(
-        connection=connection,
-        target_metadata=target_metadata,
-        compare_type=True,
-        compare_server_default=True
+
+def do_run_migrations(connection: Connection) -> None:
+    context.configure(connection=connection, target_metadata=target_metadata)
+
+    with context.begin_transaction():
+        context.run_migrations()
+
+
+async def run_migrations_online() -> None:
+    connectable = async_engine_from_config(
+        config.get_section(config.config_ini_section, {}),
+        prefix="sqlalchemy.",
+        poolclass=pool.NullPool,
     )
-    with context.begin_transaction():
-        context.run_migrations()
 
-async def run_migrations_online():
-    engine = create_async_engine(session_URL)
-    async with engine.connect() as connection:
+    async with connectable.connect() as connection:
         await connection.run_sync(do_run_migrations)
+    await connectable.dispose()
+
 
 if context.is_offline_mode():
     run_migrations_offline()

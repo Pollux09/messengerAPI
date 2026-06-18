@@ -9,9 +9,12 @@ class CryptoKeys(Base):
 
     id: Mapped[uuid.UUID] = mapped_column(UUID, primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(
-        UUID, 
-        ForeignKey("users.id", ondelete="CASCADE"), 
-        nullable=False
+        UUID,
+        ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
     )
     public_key: Mapped[str] = mapped_column(String, nullable=False)
-    private_key: Mapped[str] = mapped_column(String, nullable=False)
+    encrypted_private_key: Mapped[str] = mapped_column(String, nullable=False)
+    kdf_salt: Mapped[str] = mapped_column(String, nullable=False)
+    encryption_nonce: Mapped[str] = mapped_column(String, nullable=False)
